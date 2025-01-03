@@ -1,0 +1,22 @@
+START
+
+    SET input_file, cardswipe_output_file, and manual_output_file
+
+    DEFINE cardswipe_pattern and manual_login_pattern
+
+    CREATE empty lists cardswipe_entries and manual_entries
+
+    FOR each line in input_file DO
+        IF line matches cardswipe_pattern THEN
+            ADD line to cardswipe_entries
+        ELSE IF line matches manual_login_pattern THEN
+            ADD line to manual_entries
+    END FOR
+
+    SAVE cardswipe_entries to cardswipe_output_file
+
+    SAVE manual_entries to manual_output_file
+
+    PRINT "Data has been saved successfully."
+
+END
