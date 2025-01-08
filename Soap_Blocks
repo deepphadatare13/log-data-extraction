@@ -1,0 +1,23 @@
+import re
+
+input_file = r"C:\Users\FLEX 5\Downloads\NEUF-Impl-Bundle.149.log"
+soap_output_file = r"C:\Users\FLEX 5\Downloads\Files\soap_blocks.txt"
+
+soap_pattern = re.compile(r"<soap:Envelope.*?</soap:Envelope>", re.DOTALL)
+
+soap_blocks = []
+
+with open(input_file, "r", encoding="utf-8", errors="replace") as file:
+    log_data = file.read()
+    soap_blocks = soap_pattern.findall(log_data)
+
+if not soap_blocks:
+    print("No SOAP blocks found!")
+else:
+    print(f"Total SOAP blocks identified: {len(soap_blocks)}")
+
+with open(soap_output_file, "w", encoding="utf-8") as file:
+    file.write("SOAP Blocks:\n")
+    file.write("\n\n".join(soap_blocks))
+
+print(f"SOAP blocks saved to {soap_output_file}")
