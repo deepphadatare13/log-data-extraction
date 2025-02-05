@@ -1,0 +1,70 @@
+import re
+import os
+
+serial_file_path = r"C:\Users\FLEX 5\Downloads\Files\Serial_NUmbers.txt" 
+log_folder_path = r"C:\Users\FLEX 5\Downloads\Files\Some_Logs"
+output_folder_path = r"C:\Users\FLEX 5\Downloads\Processed_Logs" 
+
+if not os.path.exists(output_folder_path):
+    os.makedirs(output_folder_path)
+
+device_serials = {}
+with open(serial_file_path, "r") as serial_file:
+    for line in serial_file:
+        match = re.match(r"(.*)\s*-\s*(.*)", line)
+        if match:
+            serial, device_token = match.groups()
+            device_serials[serial.strip()] = device_token.strip()
+
+if not device_serials:
+    print("Error: No device serial numbers found in Serial_NUmbers.txt.")
+    exit(1)
+
+target_serial = input("Enter the device serial number: ").strip()
+
+if target_serial not in device_serials:
+    print(f"Error: The device serial number '{target_serial}' was not found in Serial_NUmbers.txt.")
+    exit(1)
+
+target_token = device_serials[target_serial]
+
+soap_pattern = re.compile(r"<soap:Envelope.*?</soap:Envelope>", re.DOTALL)
+
+for file_name in os.listdir(log_folder_path):
+    file_path = os.path.join(log_folder_path, file_name)
+
+    print(f"Processing file: {file_name}")
+
+    matched_logs = []
+    buffer = ""
+
+    with open(file_path, "r", encoding="utf-8", errors="replace") as file:
+        for line in file:
+            buffer += line
+            if "</soap:Envelope>" in buffer:
+                match = soap_pattern.search(buffer)
+                if match:
+                    soap_block = match.group()
+                    if target_token in soap_block:
+                        matched_logs.append({
+                            "serial": target_serial,
+                            "device_token": target_token,
+                            "logs": [buffer],  
+                            "soap_blocks": [soap_block],
+                        })
+                buffer = "" 
+
+    output_file_path = os.path.join(output_folder_path, f"{os.path.splitext(file_name)[0]}_processed.txt")
+    if matched_logs:
+        with open(output_file_path, "w", encoding="utf-8") as output_file:
+            for entry in matched_logs:
+                output_file.write(f"Device Serial: {entry['serial']}\n")
+                output_file.write(f"Device Token: {entry['device_token']}\n")
+                output_file.write("Logs:\n")
+                output_file.write("\n".join(entry["logs"]) + "\n")
+                output_file.write("SOAP Blocks:\n")
+                output_file.write("\n\n".join(entry["soap_blocks"]) + "\n")
+                output_file.write("\n" + "-" * 80 + "\n")
+        print(f"Processed logs saved to: {output_file_path}")
+    else:
+        print(f"No logs or SOAP blocks found for {file_name}.") 
