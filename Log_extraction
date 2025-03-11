@@ -1,0 +1,77 @@
+#09-03-2025 
+#@author deep phadatare
+
+import os
+from loguru import logger
+
+logger.add("NEUF-Impl-Bundle.145-5.log", format="{time} {level} {message}")
+
+output_directory = r"C:\Users\FLEX 5\Downloads\Processed_Logs"
+
+if not os.path.exists(output_directory):
+    os.makedirs(output_directory)
+
+auth_global_list = []
+copy_global_list = []
+
+device_id = str(input("Enter device ID!\n"))
+device_id = '<' + device_id + '>'
+
+with open('NEUF-Impl-Bundle.145-5.log', 'r') as file:
+    auth_list_content = []
+    auth_start = False
+    
+    copy_list_content = []
+    copy_start = False
+
+    for line in file:
+        
+    
+        if 'IAuthenticationEvents.OnAuthenticateBegin' in line:
+            auth_start = True
+            auth_list_content.append(line)
+        elif auth_start:
+            
+            auth_list_content.append(line)
+            if 'STATE_AUTHENTICATION_SUCCEEDED' in line:
+                auth_global_list.append(auth_list_content)
+                auth_list_content = []  
+                auth_start = False
+
+   
+        if 'Device shut down monitoring started' in line:
+            copy_start = True
+            copy_list_content.append(line)
+        elif copy_start:
+            
+            copy_list_content.append(line)
+            if 'Process: OnLogoutCompleteEvent' in line:
+                copy_global_list.append(copy_list_content)
+                copy_list_content = []  
+                copy_start = False
+
+auth_file_path = os.path.join(output_directory, f"authentication_session_{device_id.replace('<','').replace('>','')}.txt")
+with open(auth_file_path, 'w') as auth_file:
+    for session in auth_global_list:
+        for line in session:
+            auth_file.write(line)
+        auth_file.write("\n====================================================\n")
+
+print(f"✅ Authentication logs saved to: {auth_file_path}")
+
+
+copy_file_path = os.path.join(output_directory, f"device_shutdown_session_{device_id.replace('<','').replace('>','')}.txt")
+with open(copy_file_path, 'w') as copy_file:
+    for session in copy_global_list:
+        for line in session:
+            copy_file.write(line)
+        copy_file.write("\n====================================================\n")
+
+print(f"✅ Device shutdown logs saved to: {copy_file_path}")
+
+
+print("====================================================")
+print(f"✅ Total Authentication Sessions Captured: {len(auth_global_list)}")
+print(f"✅ Total Device Shutdown Sessions Captured: {len(copy_global_list)}")
+
+
