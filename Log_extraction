@@ -1,77 +1,212 @@
-#09-03-2025 
+#18-03-2025 
 #@author deep phadatare
 
 import os
+import re
 from loguru import logger
 
-logger.add("NEUF-Impl-Bundle.145-5.log", format="{time} {level} {message}")
+# Input and Output folder paths
+serial_file_path = r"C:\Users\FLEX 5\Downloads\Files\Serial_NUmbers.txt"
+log_folder_path = r"C:\Users\FLEX 5\Downloads\Files\Some_Logs"
+output_folder_path = r"C:\Users\FLEX 5\Downloads\Processed_Logs"
 
-output_directory = r"C:\Users\FLEX 5\Downloads\Processed_Logs"
+# Create output folder if it doesn't exist
+os.makedirs(output_folder_path, exist_ok=True)
 
-if not os.path.exists(output_directory):
-    os.makedirs(output_directory)
+# SOAP pattern to identify blocks
+soap_pattern_start = re.compile(r"<soap:Envelope")
+soap_pattern_end = re.compile(r"</soap:Envelope>")
 
-auth_global_list = []
-copy_global_list = []
+# Read device serials and tokens
+device_serials = {}
+with open(serial_file_path, "r") as serial_file:
+    for line in serial_file:
+        match = re.match(r"(.*)\s*-\s*(.*)", line)
+        if match:
+            serial, device_token = match.groups()
+            device_serials[serial.strip()] = device_token.strip()
 
-device_id = str(input("Enter device ID!\n"))
+if not device_serials:
+    print("Error: No device serial numbers found in Serial_NUmbers.txt.")
+    exit(1)
+
+# Global lists for different events
+impl_bundle_login_list = []
+impl_bundle_login_content = []
+impl_bundle_login_start = False
+
+impl_bundle_logout_list = []
+impl_bundle_logout_content = []
+impl_bundle_logout_start = False
+
+hpomni_bundle_login_list = []
+hpomni_bundle_login_content = []
+hpomni_bundle_login_start = False
+
+hpomni_bundle_logout_list = []
+hpomni_bundle_logout_content = []
+hpomni_bundle_logout_start = False
+
+jquery_bundle_login_list = []
+jquery_bundle_login_content = []
+jquery_bundle_login_start = False
+
+jquery_bundle_logout_list = []
+jquery_bundle_logout_content = []
+jquery_bundle_logout_start = False
+
+device_id = str(input("Enter device id!\n")).strip()
+if device_id not in device_serials:
+    print(f"Error: The device serial number '{device_id}' was not found in Serial_NUmbers.txt.")
+    exit(1)
+
+target_token = device_serials[device_id]
 device_id = '<' + device_id + '>'
 
-with open('NEUF-Impl-Bundle.145-5.log', 'r') as file:
-    auth_list_content = []
-    auth_start = False
-    
-    copy_list_content = []
-    copy_start = False
+for file_name in os.listdir(log_folder_path):
+    file_path = os.path.join(log_folder_path, file_name)
 
-    for line in file:
+    print(f"Processing file: {file_name}")
+
+    with open(file_path, 'r', encoding='utf-8', errors='replace') as file:
+        buffer = ""
+        soap_buffer = ""
+        in_soap_block = False
+        soap_valid = False  # Tracks if SOAP block contains correct token
+        soap_within_event = False
+        event_buffer = []  # Store valid lines within an event
         
-    
-        if 'IAuthenticationEvents.OnAuthenticateBegin' in line:
-            auth_start = True
-            auth_list_content.append(line)
-        elif auth_start:
+        for line in file:
+            # Track event-relevant lines only
+            if (
+                impl_bundle_login_start or impl_bundle_logout_start or 
+                hpomni_bundle_login_start or hpomni_bundle_logout_start or 
+                jquery_bundle_login_start or jquery_bundle_logout_start
+            ):
+                event_buffer.append(line)
             
-            auth_list_content.append(line)
-            if 'STATE_AUTHENTICATION_SUCCEEDED' in line:
-                auth_global_list.append(auth_list_content)
-                auth_list_content = []  
-                auth_start = False
-
-   
-        if 'Device shut down monitoring started' in line:
-            copy_start = True
-            copy_list_content.append(line)
-        elif copy_start:
+            # SOAP block tracking
+            if soap_pattern_start.search(line):
+                in_soap_block = True
+                soap_buffer = line
+                soap_valid = False
+                soap_within_event = (
+                    impl_bundle_login_start or impl_bundle_logout_start or 
+                    hpomni_bundle_login_start or hpomni_bundle_logout_start or 
+                    jquery_bundle_login_start or jquery_bundle_logout_start
+                )
+            elif in_soap_block:
+                soap_buffer += line
+                if target_token in line:
+                    soap_valid = True
+                if soap_pattern_end.search(line):
+                    in_soap_block = False
+                    # Only add SOAP block if valid token and event
+                    if soap_valid and soap_within_event:
+                        event_buffer.append(soap_buffer)
+                    soap_buffer = ""
+                    soap_valid = False
+                    soap_within_event = False
             
-            copy_list_content.append(line)
-            if 'Process: OnLogoutCompleteEvent' in line:
-                copy_global_list.append(copy_list_content)
-                copy_list_content = []  
-                copy_start = False
+            # Impl Bundle Login
+            if device_id in line and 'IAuthenticationEvents.OnAuthenticateBegin' in line:
+                impl_bundle_login_start = True
+                impl_bundle_login_content.append(line)
+                event_buffer = [line]
+            elif impl_bundle_login_start:
+                event_buffer.append(line)
+                if 'STATE_AUTHENTICATION_SUCCEEDED' in line:
+                    impl_bundle_login_list.append(event_buffer)
+                    impl_bundle_login_content = []
+                    event_buffer = []  
+                    impl_bundle_login_start = False
 
-auth_file_path = os.path.join(output_directory, f"authentication_session_{device_id.replace('<','').replace('>','')}.txt")
-with open(auth_file_path, 'w') as auth_file:
-    for session in auth_global_list:
-        for line in session:
-            auth_file.write(line)
-        auth_file.write("\n====================================================\n")
+            # Impl Bundle Logout
+            if device_id in line and 'Device shut down monitoring started' in line:
+                impl_bundle_logout_start = True
+                impl_bundle_logout_content.append(line)
+                event_buffer = [line]
+            elif impl_bundle_logout_start:
+                event_buffer.append(line)
+                if 'Process: OnLogoutCompleteEvent' in line:
+                    impl_bundle_logout_list.append(event_buffer)
+                    impl_bundle_logout_content = []  
+                    event_buffer = []
+                    impl_bundle_logout_start = False
 
-print(f"✅ Authentication logs saved to: {auth_file_path}")
+            # HPOmni Bundle Login
+            if device_id in line and '' in line:
+                hpomni_bundle_login_start = True
+                hpomni_bundle_login_content.append(line)
+                event_buffer = [line]
+            elif hpomni_bundle_login_start:
+                event_buffer.append(line)
+                if 'Print job completed' in line:
+                    hpomni_bundle_login_list.append(event_buffer)
+                    hpomni_bundle_login_content = []  
+                    event_buffer = []
+                    hpomni_bundle_login_start = False
 
+            # HPOmni Bundle Logout
+            if device_id in line and 'Logout from device:' in line:
+                hpomni_bundle_logout_start = True
+                hpomni_bundle_logout_content.append(line)
+                event_buffer = [line]
+            elif hpomni_bundle_logout_start:
+                event_buffer.append(line)
+                if '(CurrentViewController) BrowserRedirect already queued, ignore to deliver AuthOnQuickSelectListChanged' in line:
+                    hpomni_bundle_logout_list.append(event_buffer)
+                    hpomni_bundle_logout_content = []  
+                    event_buffer = []
+                    hpomni_bundle_logout_start = False
 
-copy_file_path = os.path.join(output_directory, f"device_shutdown_session_{device_id.replace('<','').replace('>','')}.txt")
-with open(copy_file_path, 'w') as copy_file:
-    for session in copy_global_list:
-        for line in session:
-            copy_file.write(line)
-        copy_file.write("\n====================================================\n")
+            # JQuery Bundle Login
+            if device_id in line and '' in line:
+                jquery_bundle_login_start = True
+                jquery_bundle_login_content.append(line)
+                event_buffer = [line]
+            elif jquery_bundle_login_start:
+                event_buffer.append(line)
+                if 'Network restored' in line:
+                    jquery_bundle_login_list.append(event_buffer)
+                    jquery_bundle_login_content = []  
+                    event_buffer = []
+                    jquery_bundle_login_start = False
 
-print(f"✅ Device shutdown logs saved to: {copy_file_path}")
+            # JQuery Bundle Logout
+            if device_id in line and '' in line:
+                jquery_bundle_logout_start = True
+                jquery_bundle_logout_content.append(line)
+                event_buffer = [line]
+            elif jquery_bundle_logout_start:
+                event_buffer.append(line)
+                if 'Power restored' in line:
+                    jquery_bundle_logout_list.append(event_buffer)
+                    jquery_bundle_logout_content = []  
+                    event_buffer = []
+                    jquery_bundle_logout_start = False
 
+# Function to save lists to files
+def save_to_file(filename, data):
+    with open(os.path.join(output_folder_path, filename), 'w', encoding='utf-8') as f:
+        f.write(f"Total events: {len(data)}\n\n")
+        for event in data:
+            f.write("\n".join(event) + "\n\n")
 
-print("====================================================")
-print(f"✅ Total Authentication Sessions Captured: {len(auth_global_list)}")
-print(f"✅ Total Device Shutdown Sessions Captured: {len(copy_global_list)}")
+# Save updated events to files
+save_to_file("impl_bundle_login.log", impl_bundle_login_list)
+save_to_file("impl_bundle_logout.log", impl_bundle_logout_list)
+save_to_file("hpomni_bundle_login.log", hpomni_bundle_login_list)
+save_to_file("hpomni_bundle_logout.log", hpomni_bundle_logout_list)
+save_to_file("jquery_bundle_login.log", jquery_bundle_login_list)
+save_to_file("jquery_bundle_logout.log", jquery_bundle_logout_list)
+
+print("Logs have been saved to:", output_folder_path)
+print(f"Impl Bundle Login: {len(impl_bundle_login_list)}")
+print(f"Impl Bundle Logout: {len(impl_bundle_logout_list)}")
+print(f"HPOmni Bundle Login: {len(hpomni_bundle_login_list)}")
+print(f"HPOmni Bundle Logout: {len(hpomni_bundle_logout_list)}")
+print(f"JQuery Bundle Login: {len(jquery_bundle_login_list)}")
+print(f"JQuery Bundle Logout: {len(jquery_bundle_logout_list)}")
 
 
